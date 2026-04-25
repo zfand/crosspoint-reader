@@ -120,6 +120,12 @@ bool HalStorage::openFileForWrite(const char* moduleName, const String& path, Ha
 
 bool HalStorage::removeDir(const char* path) { HAL_STORAGE_WRAPPED_CALL(removeDir, path); }
 
+uint64_t HalStorage::getCardTotalBytes() { HAL_STORAGE_WRAPPED_CALL(getCardTotalBytes); }
+
+uint64_t HalStorage::getCardFreeBytes() { HAL_STORAGE_WRAPPED_CALL(getCardFreeBytes); }
+
+bool HalStorage::formatCard() { HAL_STORAGE_WRAPPED_CALL(formatCard); }
+
 // HalFile implementation
 // Allow doing file operations while ensuring thread safety via HalStorage's mutex.
 // Please keep the list below in sync with the HalFile.h header
