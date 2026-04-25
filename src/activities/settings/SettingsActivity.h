@@ -19,7 +19,7 @@ enum class SettingAction {
   OPDSBrowser,
   Network,
   ClearCache,
-  FormatSdCard,
+  SdCardInfo,
   CheckForUpdates,
   Language,
 };

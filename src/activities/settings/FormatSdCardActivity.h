@@ -14,12 +14,9 @@ class FormatSdCardActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum State { LOADING, INFO, FORMATTING, SUCCESS, FAILED };
+  enum State { WARNING, FORMATTING, SUCCESS, FAILED };
 
-  State state = LOADING;
-  uint64_t totalBytes = 0;
-  uint64_t freeBytes = 0;
+  State state = WARNING;
 
   void doFormat();
-  static void formatBytesHuman(uint64_t bytes, char* buf, size_t bufLen);
 };
