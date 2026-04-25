@@ -115,11 +115,14 @@ jobs:
       - name: Run SD card unit tests
         run: bash test/run_sdcard_test.sh
 
-      - name: Install dosfstools
-        run: sudo apt-get install -y dosfstools
+      - name: Install dosfstools and mtools
+        run: sudo apt-get install -y dosfstools mtools
 
       - name: Run format volume tests
         run: bash test/run_format_volume_test.sh
+
+      - name: Run settings persistence tests
+        run: bash test/run_settings_persistence_test.sh
 
   # This job is used as the PR required actions check, allows for changes to other steps in the future without breaking
   # PR requirements.
