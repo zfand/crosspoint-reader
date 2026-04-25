@@ -25,6 +25,7 @@
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/CalibreSyncRunner.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 
@@ -178,6 +179,38 @@ void waitForPowerRelease() {
   }
 }
 
+// Returns microseconds until the next calibre sync window, or 0 if unavailable.
+// Prefers the DS3231 (X3); falls back to POSIX time() for X4 (valid after SNTP sync).
+static uint64_t computeSyncWakeupUs() {
+  if (!SETTINGS.calibreAutoSync) return 0;
+
+  uint8_t currentHour = 0;
+  uint8_t currentMinute = 0;
+
+  if (gpio.deviceIsX3()) {
+    const auto rtcTime = gpio.getDS3231Time();
+    if (!rtcTime.valid) {
+      LOG_ERR("MAIN", "DS3231 time read failed — sync timer not armed");
+      return 0;
+    }
+    currentHour = rtcTime.hour;
+    currentMinute = rtcTime.minute;
+  } else {
+    // X4: rely on POSIX time set by a prior SNTP sync (e.g. from KOReader sync).
+    const time_t now = time(nullptr);
+    if (now < 946684800L) {  // Pre-2000 means clock was never set
+      LOG_ERR("MAIN", "System time not set — sync timer not armed");
+      return 0;
+    }
+    struct tm t;
+    localtime_r(&now, &t);
+    currentHour = static_cast<uint8_t>(t.tm_hour);
+    currentMinute = static_cast<uint8_t>(t.tm_min);
+  }
+
+  return SETTINGS.getCalibreSyncIntervalUs(currentHour, currentMinute);
+}
+
 // Enter deep sleep mode
 void enterDeepSleep() {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
@@ -189,7 +222,7 @@ void enterDeepSleep() {
   display.deepSleep();
   LOG_DBG("MAIN", "Entering deep sleep");
 
-  powerManager.startDeepSleep(gpio);
+  powerManager.startDeepSleep(gpio, computeSyncWakeupUs());
 }
 
 void setupDisplayAndFonts() {
@@ -274,6 +307,13 @@ void setup() {
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
       powerManager.startDeepSleep(gpio);
       break;
+    case HalGPIO::WakeupReason::ScheduledSync:
+      // Timer-triggered wakeup for Calibre auto-sync.
+      // Run silently (no display) then go back to sleep — the user is asleep.
+      LOG_INF("MAIN", "Wakeup reason: Scheduled Calibre sync");
+      CalibreSyncRunner::run(gpio);
+      powerManager.startDeepSleep(gpio, computeSyncWakeupUs());
+      break;  // unreachable — startDeepSleep never returns
     case HalGPIO::WakeupReason::AfterFlash:
       // After flashing, just proceed to boot
     case HalGPIO::WakeupReason::Other:

@@ -200,6 +200,13 @@ class CrossPointSettings {
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
 
+  // Calibre auto-sync (daily scheduled download from Calibre Content Server)
+  uint8_t calibreAutoSync = 0;       // 0 = disabled, 1 = enabled
+  uint8_t calibreAutoSyncHour = 4;   // Hour of day to wake and sync (0–23)
+  char calibreServerUrl[128] = "";   // http://<host>:<port>  (no trailing slash)
+  char calibreUsername[64] = "";     // Optional HTTP basic-auth username
+  char calibrePassword[64] = "";     // Optional HTTP basic-auth password
+
   ~CrossPointSettings() = default;
 
   // Get singleton instance
@@ -209,6 +216,10 @@ class CrossPointSettings {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
+
+  // Returns microseconds until the next calibreAutoSyncHour:00, capped at 24 h.
+  // Returns 0 if calibreAutoSync is disabled.
+  uint64_t getCalibreSyncIntervalUs(uint8_t currentHour, uint8_t currentMinute) const;
 
   // If count_only is true, returns the number of settings items that would be written.
   uint8_t writeSettings(FsFile& file, bool count_only = false) const;

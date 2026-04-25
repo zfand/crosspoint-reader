@@ -82,8 +82,33 @@ bool probeDS3231Signature() {
   }
   const uint8_t tensDigit = (sec >> 4) & 0x07;
   const uint8_t onesDigit = sec & 0x0F;
-
   return tensDigit <= 5 && onesDigit <= 9;
+}
+
+// BCD byte → binary. No validation — caller must range-check the raw register.
+static inline uint8_t bcdToBin(uint8_t bcd) {
+  return (bcd >> 4) * 10 + (bcd & 0x0F);
+}
+
+HalGPIO::Ds3231Time readDS3231Time() {
+  HalGPIO::Ds3231Time result{0, 0, false};
+
+  uint8_t minRaw = 0;
+  uint8_t hourRaw = 0;
+  if (!readI2CReg8(I2C_ADDR_DS3231, DS3231_MIN_REG, &minRaw)) return result;
+  if (!readI2CReg8(I2C_ADDR_DS3231, DS3231_HOUR_REG, &hourRaw)) return result;
+
+  // Bit 6 of the hours register selects 12/24h mode (0 = 24h).
+  // Mask off the mode bit before converting.
+  const uint8_t minute = bcdToBin(minRaw & 0x7F);
+  const uint8_t hour = bcdToBin(hourRaw & 0x3F);
+
+  if (minute > 59 || hour > 23) return result;
+
+  result.minute = minute;
+  result.hour = hour;
+  result.valid = true;
+  return result;
 }
 
 bool probeQMI8658Signature() {
@@ -300,5 +325,19 @@ HalGPIO::WakeupReason HalGPIO::getWakeupReason() const {
   if (wakeupCause == ESP_SLEEP_WAKEUP_UNDEFINED && resetReason == ESP_RST_POWERON && usbConnected) {
     return WakeupReason::AfterUSBPower;
   }
+  if (wakeupCause == ESP_SLEEP_WAKEUP_TIMER && resetReason == ESP_RST_DEEPSLEEP) {
+    return WakeupReason::ScheduledSync;
+  }
   return WakeupReason::Other;
+}
+
+HalGPIO::Ds3231Time HalGPIO::getDS3231Time() const {
+  if (!deviceIsX3()) {
+    // X4 has no DS3231 — caller should fall back to POSIX time().
+    return {0, 0, false};
+  }
+  // Wire is already initialised by HalPowerManager::begin() on X3.
+  // Do not call Wire.begin()/end() here to avoid interfering with the
+  // concurrent battery-monitoring usage in the render task.
+  return X3GPIO::readDS3231Time();
 }

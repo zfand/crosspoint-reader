@@ -111,6 +111,25 @@ inline const std::vector<SettingInfo>& getSettingsList() {
             KOREADER_STORE.saveToFile();
           },
           "koMatchMethod", StrId::STR_KOREADER_SYNC),
+      // --- Calibre Auto-Sync ---
+      // Toggle and hour are in the System category so they appear in the device UI.
+      // Server URL and credentials are web-only (STR_CAT_CALIBRE_SYNC) to avoid
+      // forcing the user through the on-screen keyboard for long strings.
+      SettingInfo::Toggle(StrId::STR_CALIBRE_AUTO_SYNC, &CrossPointSettings::calibreAutoSync,
+                          "calibreAutoSync", StrId::STR_CAT_SYSTEM),
+      SettingInfo::Value(StrId::STR_CALIBRE_AUTO_SYNC_HOUR, &CrossPointSettings::calibreAutoSyncHour,
+                         {0, 23, 1}, "calibreAutoSyncHour", StrId::STR_CAT_SYSTEM),
+      SettingInfo::String(StrId::STR_CALIBRE_SYNC_URL, SETTINGS.calibreServerUrl,
+                          sizeof(SETTINGS.calibreServerUrl), "calibreServerUrl",
+                          StrId::STR_CAT_CALIBRE_SYNC),
+      SettingInfo::String(StrId::STR_CALIBRE_SYNC_USERNAME, SETTINGS.calibreUsername,
+                          sizeof(SETTINGS.calibreUsername), "calibreUsername",
+                          StrId::STR_CAT_CALIBRE_SYNC),
+      SettingInfo::String(StrId::STR_CALIBRE_SYNC_PASSWORD, SETTINGS.calibrePassword,
+                          sizeof(SETTINGS.calibrePassword), "calibrePassword",
+                          StrId::STR_CAT_CALIBRE_SYNC)
+          .withObfuscated(),
+
       // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
       SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
                           "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),
