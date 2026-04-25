@@ -78,7 +78,13 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
 
 bool CrossPointSettings::saveToFile() const {
   Storage.mkdir("/.crosspoint");
-  return JsonSettingsIO::saveSettings(*this, SETTINGS_FILE_JSON);
+  const bool ok = JsonSettingsIO::saveSettings(*this, SETTINGS_FILE_JSON);
+  if (ok) {
+    LOG_INF("CPS", "Settings saved to SD card");
+  } else {
+    LOG_ERR("CPS", "Failed to save settings to SD card");
+  }
+  return ok;
 }
 
 bool CrossPointSettings::loadFromFile() {

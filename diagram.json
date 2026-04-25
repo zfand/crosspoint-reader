@@ -13,9 +13,25 @@
     {
       "id": "sd",
       "type": "wokwi-microsd-card",
-      "top": 180,
-      "left": -170,
+      "top": 200,
+      "left": -220,
       "attrs": {}
+    },
+    {
+      "id": "pot1",
+      "type": "wokwi-slide-potentiometer",
+      "top": 360,
+      "left": 60,
+      "attrs": { "value": "0" },
+      "label": "Buttons ADC1 (GPIO1) — Back/Confirm/Left/Right"
+    },
+    {
+      "id": "pot2",
+      "type": "wokwi-slide-potentiometer",
+      "top": 420,
+      "left": 60,
+      "attrs": { "value": "0" },
+      "label": "Buttons ADC2 (GPIO2) — Up/Down"
     }
   ],
   "connections": [
@@ -24,7 +40,15 @@
     ["esp:GPIO8",  "sd:CLK",  "orange", ["l10", "t10"]],
     ["esp:GPIO12", "sd:DAT3", "yellow", ["l0",  "t20"]],
     ["esp:3V3",    "sd:VCC",  "red",    []],
-    ["esp:GND.1",  "sd:GND",  "black",  []]
+    ["esp:GND.1",  "sd:GND",  "black",  []],
+
+    ["esp:GPIO1",  "pot1:SIG", "purple", []],
+    ["esp:3V3",    "pot1:VCC", "red",    []],
+    ["esp:GND.2",  "pot1:GND", "black",  []],
+
+    ["esp:GPIO2",  "pot2:SIG", "purple", []],
+    ["esp:3V3",    "pot2:VCC", "red",    []],
+    ["esp:GND.3",  "pot2:GND", "black",  []]
   ],
   "serialMonitor": {
     "display": "always"
