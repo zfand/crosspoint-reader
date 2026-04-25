@@ -9,16 +9,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-
-void SdCardActivity::formatBytesHuman(const uint64_t bytes, char* buf, const size_t bufLen) {
-  if (bytes >= 1024ULL * 1024 * 1024) {
-    snprintf(buf, bufLen, "%.1f GB", static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0));
-  } else if (bytes >= 1024ULL * 1024) {
-    snprintf(buf, bufLen, "%.0f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
-  } else {
-    snprintf(buf, bufLen, "%llu KB", static_cast<unsigned long long>(bytes) / 1024ULL);
-  }
-}
+#include "util/BytesFormatter.h"
 
 void SdCardActivity::loadSpaceInfo() {
   totalBytes = Storage.getCardTotalBytes();
@@ -60,9 +51,9 @@ void SdCardActivity::render(RenderLock&&) {
   char usedBuf[16];
   char freeBuf[16];
   char totalBuf[16];
-  formatBytesHuman(totalBytes - freeBytes, usedBuf, sizeof(usedBuf));
-  formatBytesHuman(freeBytes, freeBuf, sizeof(freeBuf));
-  formatBytesHuman(totalBytes, totalBuf, sizeof(totalBuf));
+  BytesFormatter::format(totalBytes - freeBytes, usedBuf, sizeof(usedBuf));
+  BytesFormatter::format(freeBytes, freeBuf, sizeof(freeBuf));
+  BytesFormatter::format(totalBytes, totalBuf, sizeof(totalBuf));
 
   char spaceBuf[64];
   snprintf(spaceBuf, sizeof(spaceBuf), "%s %s  |  %s %s  |  %s %s",

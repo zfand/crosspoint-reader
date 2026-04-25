@@ -102,6 +102,19 @@ jobs:
           path: .pio/build/default/firmware.bin
           if-no-files-found: error
 
+  native-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Run differential rounding test
+        run: bash test/run_differential_rounding_test.sh
+
+      - name: Run SD card unit tests
+        run: bash test/run_sdcard_test.sh
+
   # This job is used as the PR required actions check, allows for changes to other steps in the future without breaking
   # PR requirements.
   test-status:
@@ -110,6 +123,7 @@ jobs:
       - build
       - clang-format
       - cppcheck
+      - native-tests
     if: always()
     runs-on: ubuntu-latest
     steps:

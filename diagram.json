@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "author": "CrossPoint Reader",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "id": "esp",
+      "type": "board-esp32-c3-devkitm-1",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "id": "sd",
+      "type": "wokwi-microsd-card",
+      "top": 180,
+      "left": -170,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    ["esp:GPIO10", "sd:CMD",  "green",  ["l30", "t-10"]],
+    ["esp:GPIO7",  "sd:DAT0", "blue",   ["l20", "t0"]],
+    ["esp:GPIO8",  "sd:CLK",  "orange", ["l10", "t10"]],
+    ["esp:GPIO12", "sd:DAT3", "yellow", ["l0",  "t20"]],
+    ["esp:3V3",    "sd:VCC",  "red",    []],
+    ["esp:GND.1",  "sd:GND",  "black",  []]
+  ],
+  "serialMonitor": {
+    "display": "always"
+  }
+}

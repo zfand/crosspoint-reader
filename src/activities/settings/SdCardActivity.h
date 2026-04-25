@@ -21,5 +21,4 @@ class SdCardActivity final : public Activity {
   uint64_t freeBytes = 0;
 
   void loadSpaceInfo();
-  static void formatBytesHuman(uint64_t bytes, char* buf, size_t bufLen);
 };

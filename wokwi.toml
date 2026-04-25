@@ -1,0 +1,10 @@
+[wokwi]
+version = 1
+firmware = ".pio/build/default/firmware.bin"
+elf = ".pio/build/default/firmware.elf"
+
+# Run: build firmware first with `pio run`, then open https://wokwi.com/projects/new
+# and import this project, or use the Wokwi VS Code extension.
+#
+# For automated CI, Wokwi CLI (subscription) can drive this scenario:
+#   wokwi-cli run --timeout 30 --expect "SD card detected" --expect "Format succeeded"
