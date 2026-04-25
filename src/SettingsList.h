@@ -112,13 +112,14 @@ inline const std::vector<SettingInfo>& getSettingsList() {
           },
           "koMatchMethod", StrId::STR_KOREADER_SYNC),
       // --- Calibre Auto-Sync ---
-      // Toggle and hour are in the System category so they appear in the device UI.
-      // Server URL and credentials are web-only (STR_CAT_CALIBRE_SYNC) to avoid
-      // forcing the user through the on-screen keyboard for long strings.
+      // All five settings use STR_CAT_CALIBRE_SYNC so they are web-API-accessible
+      // but do NOT appear in the auto-rendered device settings list.
+      // The device UI reaches them via the CalibreAutoSyncSettingsActivity sub-menu
+      // (SettingAction::CalibreAutoSync), which also shows the USB-power note.
       SettingInfo::Toggle(StrId::STR_CALIBRE_AUTO_SYNC, &CrossPointSettings::calibreAutoSync,
-                          "calibreAutoSync", StrId::STR_CAT_SYSTEM),
+                          "calibreAutoSync", StrId::STR_CAT_CALIBRE_SYNC),
       SettingInfo::Value(StrId::STR_CALIBRE_AUTO_SYNC_HOUR, &CrossPointSettings::calibreAutoSyncHour,
-                         {0, 23, 1}, "calibreAutoSyncHour", StrId::STR_CAT_SYSTEM),
+                         {0, 23, 1}, "calibreAutoSyncHour", StrId::STR_CAT_CALIBRE_SYNC),
       SettingInfo::String(StrId::STR_CALIBRE_SYNC_URL, SETTINGS.calibreServerUrl,
                           sizeof(SETTINGS.calibreServerUrl), "calibreServerUrl",
                           StrId::STR_CAT_CALIBRE_SYNC),
