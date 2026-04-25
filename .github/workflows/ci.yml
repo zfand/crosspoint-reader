@@ -115,6 +115,12 @@ jobs:
       - name: Run SD card unit tests
         run: bash test/run_sdcard_test.sh
 
+      - name: Install dosfstools
+        run: sudo apt-get install -y dosfstools
+
+      - name: Run format volume tests
+        run: bash test/run_format_volume_test.sh
+
   # This job is used as the PR required actions check, allows for changes to other steps in the future without breaking
   # PR requirements.
   test-status:
