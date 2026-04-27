@@ -9,35 +9,11 @@
 #include "ChapterXPathResolver.h"
 #include "Epub/htmlEntities.h"
 #include "Utf8.h"
+#include "XPathUtils.h"
 
 namespace {
-int parseIndex(const std::string& xpath, const char* prefix, bool last = false) {
-  const size_t prefixLen = strlen(prefix);
-  const size_t pos = last ? xpath.rfind(prefix) : xpath.find(prefix);
-  if (pos == std::string::npos) return -1;
-  const size_t numStart = pos + prefixLen;
-  const size_t numEnd = xpath.find(']', numStart);
-  if (numEnd == std::string::npos || numEnd == numStart) return -1;
-  int val = 0;
-  for (size_t i = numStart; i < numEnd; i++) {
-    if (xpath[i] < '0' || xpath[i] > '9') return -1;
-    val = val * 10 + (xpath[i] - '0');
-  }
-  return val;
-}
-
-int parseCharOffset(const std::string& xpath) {
-  const size_t textPos = xpath.rfind("text()");
-  if (textPos == std::string::npos) return 0;
-  const size_t dotPos = xpath.find('.', textPos);
-  if (dotPos == std::string::npos || dotPos + 1 >= xpath.size()) return 0;
-  int val = 0;
-  for (size_t i = dotPos + 1; i < xpath.size(); i++) {
-    if (xpath[i] < '0' || xpath[i] > '9') return 0;
-    val = val * 10 + (xpath[i] - '0');
-  }
-  return val;
-}
+using XPathUtils::parseCharOffset;
+using XPathUtils::parseIndex;
 
 class ParagraphStreamer final : public Print {
   size_t bytesWritten = 0;

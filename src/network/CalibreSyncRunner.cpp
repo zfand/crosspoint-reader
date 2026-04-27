@@ -10,6 +10,7 @@
 
 #include "CrossPointSettings.h"
 #include "HttpDownloader.h"
+#include "util/UrlUtils.h"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,13 +30,6 @@ static bool connectWifi() {
   }
   LOG_INF("CSYNC", "WiFi connected: %s", WiFi.localIP().toString().c_str());
   return true;
-}
-
-// Returns the filename portion of a URL path (everything after the last '/').
-static std::string filenameFromUrl(const std::string& url) {
-  const size_t slash = url.rfind('/');
-  if (slash == std::string::npos || slash + 1 >= url.size()) return url;
-  return url.substr(slash + 1);
 }
 
 // Returns true if a file with the given base name already exists under BOOKS_DIR.
@@ -93,7 +87,7 @@ bool CalibreSyncRunner::run(HalGPIO& /*gpio*/) {
     if (entry.type != OpdsEntryType::BOOK) continue;
     if (entry.href.empty()) continue;
 
-    const std::string filename = filenameFromUrl(entry.href);
+    const std::string filename = UrlUtils::filenameFromUrl(entry.href);
     if (filename.empty()) continue;
 
     // Only download EPUB files.

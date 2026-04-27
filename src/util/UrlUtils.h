@@ -25,4 +25,10 @@ std::string extractHost(const std::string& url);
  */
 std::string buildUrl(const std::string& serverUrl, const std::string& path);
 
+/**
+ * Extract the filename portion of a URL path (everything after the last '/').
+ * Returns the full input if no slash is present.
+ */
+std::string filenameFromUrl(const std::string& url);
+
 }  // namespace UrlUtils
