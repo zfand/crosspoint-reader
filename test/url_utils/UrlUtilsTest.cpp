@@ -52,6 +52,9 @@ static void test_ensureProtocol_no_protocol() {
   printf("test_ensureProtocol_no_protocol...\n");
   ASSERT_EQ(UrlUtils::ensureProtocol("example.com"), std::string("http://example.com"));
   ASSERT_EQ(UrlUtils::ensureProtocol("192.168.1.1:8080"), std::string("http://192.168.1.1:8080"));
+  // Regression: OPDS feed URL must not lose protocol when concatenating path
+  ASSERT_EQ(UrlUtils::ensureProtocol("192.168.1.17:8080") + "/opds/new",
+            std::string("http://192.168.1.17:8080/opds/new"));
   PASS();
 }
 
