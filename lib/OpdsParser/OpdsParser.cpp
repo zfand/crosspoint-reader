@@ -67,9 +67,10 @@ void OpdsParser::clear() {
   searchTemplate.clear();
   nextPageUrl.clear();
   prevPageUrl.clear();
+  feedUpdated.clear();
   currentEntry = OpdsEntry{};
   currentText.clear();
-  inEntry = inTitle = inAuthor = inAuthorName = inId = false;
+  inEntry = inTitle = inAuthor = inAuthorName = inId = inUpdated = inPublished = false;
 }
 
 std::vector<OpdsEntry> OpdsParser::getBooks() const {
@@ -128,6 +129,13 @@ void XMLCALL OpdsParser::startElement(void* userData, const XML_Char* name, cons
     return;
   }
 
+  // Feed-level <updated> (captured only outside entries)
+  if (!self->inEntry && (strcmp(name, "updated") == 0 || strstr(name, ":updated") != nullptr)) {
+    self->inUpdated = true;
+    self->currentText.clear();
+    return;
+  }
+
   if (!self->inEntry) return;
 
   if (strcmp(name, "title") == 0 || strstr(name, ":title") != nullptr) {
@@ -141,11 +149,27 @@ void XMLCALL OpdsParser::startElement(void* userData, const XML_Char* name, cons
   } else if (strcmp(name, "id") == 0 || strstr(name, ":id") != nullptr) {
     self->inId = true;
     self->currentText.clear();
+  } else if (strcmp(name, "published") == 0 || strcmp(name, "dc:date") == 0) {
+    self->inPublished = true;
+    self->currentText.clear();
+  } else if (strcmp(name, "category") == 0 || strstr(name, ":category") != nullptr) {
+    const char* term = findAttribute(atts, "term");
+    if (term && term[0] != '\0') {
+      if (!self->currentEntry.tags.empty()) self->currentEntry.tags += ',';
+      self->currentEntry.tags += term;
+    }
   }
 }
 
 void XMLCALL OpdsParser::endElement(void* userData, const XML_Char* name) {
   auto* self = static_cast<OpdsParser*>(userData);
+
+  // Feed-level <updated>
+  if (self->inUpdated && (strcmp(name, "updated") == 0 || strstr(name, ":updated") != nullptr)) {
+    if (self->feedUpdated.empty()) self->feedUpdated = self->currentText;
+    self->inUpdated = false;
+    return;
+  }
 
   if (strcmp(name, "entry") == 0 || strstr(name, ":entry") != nullptr) {
     if (!self->currentEntry.title.empty() && !self->currentEntry.href.empty()) {
@@ -164,13 +188,17 @@ void XMLCALL OpdsParser::endElement(void* userData, const XML_Char* name) {
     } else if (strcmp(name, "id") == 0 || strstr(name, ":id") != nullptr) {
       if (self->inId) self->currentEntry.id = self->currentText;
       self->inId = false;
+    } else if (self->inPublished &&
+               (strcmp(name, "published") == 0 || strcmp(name, "dc:date") == 0)) {
+      if (self->currentEntry.published.empty()) self->currentEntry.published = self->currentText;
+      self->inPublished = false;
     }
   }
 }
 
 void XMLCALL OpdsParser::characterData(void* userData, const XML_Char* s, const int len) {
   auto* self = static_cast<OpdsParser*>(userData);
-  if (self->inTitle || self->inAuthorName || self->inId) {
+  if (self->inTitle || self->inAuthorName || self->inId || self->inUpdated || self->inPublished) {
     self->currentText.append(s, len);
   }
 }

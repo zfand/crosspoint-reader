@@ -201,11 +201,12 @@ class CrossPointSettings {
   uint8_t imageRendering = IMAGES_DISPLAY;
 
   // Calibre auto-sync (daily scheduled download from Calibre Content Server)
-  uint8_t calibreAutoSync = 0;       // 0 = disabled, 1 = enabled
-  uint8_t calibreAutoSyncHour = 4;   // Hour of day to wake and sync (0–23)
-  char calibreServerUrl[128] = "";   // http://<host>:<port>  (no trailing slash)
-  char calibreUsername[64] = "";     // Optional HTTP basic-auth username
-  char calibrePassword[64] = "";     // Optional HTTP basic-auth password
+  uint8_t calibreAutoSync = 0;         // 0 = disabled, 1 = enabled
+  uint8_t calibreAutoSyncHour = 4;     // Hour of day to wake and sync (0–23)
+  int8_t calibreSyncServerIndex = -1;  // Index into OpdsServerStore; -1 = not set
+  uint8_t calibreFeedMaxSize = 5;      // Max .epub files to keep in /feed (1–20)
+  uint8_t calibreSyncTagMode = 0;      // 0 = All, 1 = News, 2 = Custom tag
+  char calibreSyncCustomTag[32] = "";  // Tag to match when calibreSyncTagMode == 2
 
   ~CrossPointSettings() = default;
 

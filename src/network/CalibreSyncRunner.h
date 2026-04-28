@@ -17,12 +17,17 @@
  */
 class CalibreSyncRunner {
  public:
-  // Returns true if at least one book was downloaded successfully.
-  // All errors are logged via LOG_ERR; never throws.
+  // Full sync: connects WiFi, runs syncNow(), disconnects.
+  // Returns true if at least one book was downloaded.
   static bool run(HalGPIO& gpio);
 
- private:
+  // WiFi-agnostic sync: discovers the "By Newest" feed from the root catalog,
+  // skips if nothing has changed, downloads only books newer than last sync.
+  // Returns number of books downloaded, or -1 on error.
+  // Caller is responsible for WiFi being connected before calling.
+  static int syncNow();
+
   static constexpr unsigned long WIFI_TIMEOUT_MS = 20000;
-  static constexpr const char* BOOKS_DIR = "/books";
-  static constexpr const char* OPDS_NEW_PATH = "/opds/new";
+  static constexpr const char* FEED_DIR = "/feed";
+  static constexpr const char* OPDS_ROOT_PATH = "/opds";
 };
