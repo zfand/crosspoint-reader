@@ -2,6 +2,7 @@
 
 #include <FsHelpers.h>
 #include <HalStorage.h>
+#include <I18n.h>
 
 #include "CrossPointSettings.h"
 #include "Epub.h"
@@ -22,7 +23,9 @@ bool ReaderActivity::isTxtFile(const std::string& path) {
 
 bool ReaderActivity::isBmpFile(const std::string& path) { return FsHelpers::hasBmpExtension(path); }
 
-std::unique_ptr<Epub> ReaderActivity::loadEpub(const std::string& path) {
+std::unique_ptr<Epub> ReaderActivity::loadEpub(const std::string& path,
+                                               bool* drmFailedOut) {
+  if (drmFailedOut) *drmFailedOut = false;
   if (!Storage.exists(path.c_str())) {
     LOG_ERR("READER", "File does not exist: %s", path.c_str());
     return nullptr;
@@ -33,6 +36,7 @@ std::unique_ptr<Epub> ReaderActivity::loadEpub(const std::string& path) {
     return epub;
   }
 
+  if (drmFailedOut) *drmFailedOut = epub->failedDueToDrm();
   LOG_ERR("READER", "Failed to load epub");
   return nullptr;
 }
@@ -121,9 +125,16 @@ void ReaderActivity::onEnter() {
     }
     onGoToTxtReader(std::move(txt));
   } else {
-    auto epub = loadEpub(initialBookPath);
+    bool drmFailed = false;
+    auto epub = loadEpub(initialBookPath, &drmFailed);
     if (!epub) {
-      onGoBack();
+      if (drmFailed) {
+        activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
+            renderer, mappedInput, std::string(tr(STR_DRM_NO_ACTIVATION)),
+            EpdFontFamily::BOLD));
+      } else {
+        onGoBack();
+      }
       return;
     }
     onGoToEpubReader(std::move(epub));

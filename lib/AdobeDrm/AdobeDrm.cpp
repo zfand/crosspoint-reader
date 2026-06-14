@@ -8,10 +8,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 
 // Statics
-uint8_t* AdobeDrm::activationKeyDer = nullptr;
-size_t AdobeDrm::activationKeyLen = 0;
+mbedtls_pk_context* AdobeDrm::activationPk = nullptr;
 
 // Hardware RNG callback required by mbedTLS for RSA blinding (ESP32 built-in TRNG).
 static int espRngCallback(void* /*ctx*/, unsigned char* buf, size_t len) {
@@ -24,7 +24,7 @@ static int espRngCallback(void* /*ctx*/, unsigned char* buf, size_t len) {
 }
 
 bool AdobeDrm::loadActivation() {
-  if (activationKeyDer) return true;
+  if (activationPk) return true;
 
   FsFile keyFile;
   if (!Storage.openFileForRead("DRM", AdobeDrm::ACTIVATION_KEY_PATH, keyFile)) {
@@ -54,64 +54,77 @@ bool AdobeDrm::loadActivation() {
   }
   keyFile.close();
 
-  // Validate before storing: attempt to parse the key with mbedTLS.
-  mbedtls_pk_context pk;
-  mbedtls_pk_init(&pk);
-  const int ret =
-      mbedtls_pk_parse_key(&pk, buf, fileSize, nullptr, 0, espRngCallback, nullptr);
-  mbedtls_pk_free(&pk);
-  if (ret != 0) {
-    LOG_ERR("DRM", "Device key parse failed: -0x%04X (must be PKCS#8 DER format)", -ret);
+  // Parse and store the key. Keeping the parsed context avoids re-parsing (~1–2 s on
+  // ESP32-C3) on every book open. The pk context manages its own internal heap memory.
+  auto* pk = static_cast<mbedtls_pk_context*>(malloc(sizeof(mbedtls_pk_context)));
+  if (!pk) {
+    LOG_ERR("DRM", "malloc failed for pk_context");
     free(buf);
     return false;
   }
+  mbedtls_pk_init(pk);
 
-  activationKeyDer = buf;
-  activationKeyLen = fileSize;
-  LOG_INF("DRM", "Device activation key loaded (%zu bytes)", fileSize);
+  const int ret = mbedtls_pk_parse_key(pk, buf, fileSize, nullptr, 0, espRngCallback, nullptr);
+  free(buf);
+  if (ret != 0) {
+    LOG_ERR("DRM", "Device key parse failed: -0x%04X (must be PKCS#8 DER format)", -ret);
+    mbedtls_pk_free(pk);
+    free(pk);
+    return false;
+  }
+
+  activationPk = pk;
+  LOG_INF("DRM", "Device activation key loaded and parsed");
   return true;
 }
 
 void AdobeDrm::freeActivation() {
-  free(activationKeyDer);
-  activationKeyDer = nullptr;
-  activationKeyLen = 0;
+  if (activationPk) {
+    mbedtls_pk_free(activationPk);
+    free(activationPk);
+    activationPk = nullptr;
+  }
+}
+
+bool AdobeDrm::validateKeyBuffer(const uint8_t* der, size_t len) {
+  mbedtls_pk_context pk;
+  mbedtls_pk_init(&pk);
+  const int ret = mbedtls_pk_parse_key(&pk, der, len, nullptr, 0, espRngCallback, nullptr);
+  mbedtls_pk_free(&pk);
+  return ret == 0;
 }
 
 bool AdobeDrm::decryptContentKey(const uint8_t* encryptedKey, const size_t encKeyLen) {
-  if (!activationKeyDer) {
+  if (!activationPk) {
     LOG_ERR("DRM", "No device activation key loaded");
     return false;
   }
 
-  mbedtls_pk_context pk;
-  mbedtls_pk_init(&pk);
-
-  int ret = mbedtls_pk_parse_key(&pk, activationKeyDer, activationKeyLen, nullptr, 0,
-                                  espRngCallback, nullptr);
-  if (ret != 0) {
-    LOG_ERR("DRM", "pk_parse_key failed: -0x%04X", -ret);
-    mbedtls_pk_free(&pk);
+  // Output buffer on heap: 256 bytes exceeds the 256-byte stack variable limit (CLAUDE.md).
+  auto* decrypted = static_cast<uint8_t*>(malloc(MAX_RSA_OUTPUT));
+  if (!decrypted) {
+    LOG_ERR("DRM", "malloc failed for RSA output buffer");
     return false;
   }
 
-  uint8_t decrypted[MAX_RSA_OUTPUT];
   size_t decryptedLen = 0;
-  ret = mbedtls_pk_decrypt(&pk, encryptedKey, encKeyLen, decrypted, &decryptedLen,
-                            sizeof(decrypted), espRngCallback, nullptr);
-  mbedtls_pk_free(&pk);
-
+  // Use the already-parsed activationPk — no re-parse needed.
+  const int ret = mbedtls_pk_decrypt(activationPk, encryptedKey, encKeyLen, decrypted,
+                                     &decryptedLen, MAX_RSA_OUTPUT, espRngCallback, nullptr);
   if (ret != 0) {
     LOG_ERR("DRM", "RSA decrypt failed: -0x%04X", -ret);
+    free(decrypted);
     return false;
   }
 
   if (decryptedLen != AES_KEY_LEN) {
     LOG_ERR("DRM", "Unexpected content key length: %zu (expected %zu)", decryptedLen, AES_KEY_LEN);
+    free(decrypted);
     return false;
   }
 
   memcpy(contentKey, decrypted, AES_KEY_LEN);
+  free(decrypted);
   keyReady = true;
   LOG_INF("DRM", "Content key decrypted successfully");
   return true;
@@ -121,7 +134,7 @@ bool AdobeDrm::init(std::vector<std::string> paths, const std::string& encrypted
   keyReady = false;
   encryptedPaths.clear();
 
-  if (!activationKeyDer) {
+  if (!activationPk) {
     LOG_ERR("DRM", "Cannot init book DRM: no device activation loaded");
     return false;
   }
@@ -131,21 +144,27 @@ bool AdobeDrm::init(std::vector<std::string> paths, const std::string& encrypted
     return false;
   }
 
-  // Base64-decode the RSA-encrypted AES key.
-  uint8_t rsaEncryptedKey[MAX_RSA_OUTPUT];
+  // Base64-decode the RSA-encrypted AES key. On heap: 256 bytes exceeds the stack limit.
+  auto* rsaEncryptedKey = static_cast<uint8_t*>(malloc(MAX_RSA_OUTPUT));
+  if (!rsaEncryptedKey) {
+    LOG_ERR("DRM", "malloc failed for RSA key buffer");
+    return false;
+  }
+
   size_t rsaKeyLen = 0;
   const int b64Ret =
-      mbedtls_base64_decode(rsaEncryptedKey, sizeof(rsaEncryptedKey), &rsaKeyLen,
+      mbedtls_base64_decode(rsaEncryptedKey, MAX_RSA_OUTPUT, &rsaKeyLen,
                             reinterpret_cast<const uint8_t*>(encryptedKeyB64.c_str()),
                             encryptedKeyB64.size());
   if (b64Ret != 0) {
     LOG_ERR("DRM", "Base64 decode of encryptedKey failed: -0x%04X", -b64Ret);
+    free(rsaEncryptedKey);
     return false;
   }
 
-  if (!decryptContentKey(rsaEncryptedKey, rsaKeyLen)) {
-    return false;
-  }
+  const bool ok = decryptContentKey(rsaEncryptedKey, rsaKeyLen);
+  free(rsaEncryptedKey);
+  if (!ok) return false;
 
   encryptedPaths = std::move(paths);
   std::sort(encryptedPaths.begin(), encryptedPaths.end());
@@ -154,8 +173,10 @@ bool AdobeDrm::init(std::vector<std::string> paths, const std::string& encrypted
 
 bool AdobeDrm::isItemEncrypted(const char* itemPath) const {
   if (!keyReady || encryptedPaths.empty()) return false;
-  return std::binary_search(encryptedPaths.begin(), encryptedPaths.end(),
-                             std::string(itemPath));
+  // string_view avoids heap allocation on this hot path.
+  const std::string_view sv(itemPath);
+  return std::binary_search(encryptedPaths.cbegin(), encryptedPaths.cend(), sv,
+                             [](const auto& a, const auto& b) { return a < b; });
 }
 
 size_t AdobeDrm::decryptBuffer(uint8_t* buf, const size_t rawLen) const {

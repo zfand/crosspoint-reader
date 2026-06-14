@@ -14,3 +14,11 @@ void FullScreenMessageActivity::onEnter() {
   renderer.drawCenteredText(UI_10_FONT_ID, top, text.c_str(), true, style);
   renderer.displayBuffer(refreshMode);
 }
+
+void FullScreenMessageActivity::loop() {
+  mappedInput.update();
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    finish();
+  }
+}

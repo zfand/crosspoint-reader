@@ -1,4 +1,6 @@
 #pragma once
+#include <mbedtls/pk.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -28,15 +30,19 @@ class AdobeDrm {
   // Path on the SD card where the PKCS#8 DER device private key is stored.
   static constexpr const char* ACTIVATION_KEY_PATH = "/drm/device.key";
 
-  // Load the device RSA private key from the SD card into a static buffer.
+  // Load and parse the device RSA private key from the SD card.
   // Must succeed before init() can decrypt any book.
   // Returns false if the file is missing or cannot be parsed.
   static bool loadActivation();
 
-  // Release the device private key from heap. Safe to call even if not loaded.
+  // Release the device private key. Safe to call even if not loaded.
   static void freeActivation();
 
-  static bool hasActivation() { return activationKeyDer != nullptr; }
+  static bool hasActivation() { return activationPk != nullptr; }
+
+  // Validate a DER key buffer without storing it.
+  // Returns false if not a valid unencrypted PKCS#8 RSA private key.
+  static bool validateKeyBuffer(const uint8_t* der, size_t len);
 
   // Initialise per-book DRM from data already parsed by Epub::initDrm().
   //   encryptedPaths : sorted, ZIP-relative paths of encrypted items (moved in).
@@ -61,9 +67,9 @@ class AdobeDrm {
   // ZIP-relative paths of encrypted items, kept sorted for binary search.
   std::vector<std::string> encryptedPaths;
 
-  // Shared across all AdobeDrm instances (one device activation per session).
-  static uint8_t* activationKeyDer;
-  static size_t activationKeyLen;
+  // Parsed RSA private key; shared across all AdobeDrm instances (one device key per session).
+  // Stored parsed to avoid re-parsing on every book open (~1–2 s on ESP32-C3).
+  static mbedtls_pk_context* activationPk;
 
   bool decryptContentKey(const uint8_t* encryptedKey, size_t encKeyLen);
 };

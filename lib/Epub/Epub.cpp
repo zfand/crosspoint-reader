@@ -15,6 +15,12 @@
 #include "Epub/parsers/TocNavParser.h"
 #include "Epub/parsers/TocNcxParser.h"
 
+Epub::Epub(std::string filepath, const std::string& cacheDir) : filepath(std::move(filepath)) {
+  cachePath = cacheDir + "/epub_" + std::to_string(std::hash<std::string>{}(this->filepath));
+}
+
+Epub::~Epub() = default;
+
 bool Epub::findContentOpfFile(std::string* contentOpfFile) const {
   const auto containerPath = "META-INF/container.xml";
   size_t containerSize;
@@ -336,7 +342,7 @@ void Epub::parseCssFiles() const {
   LOG_DBG("EBP", "Loaded %zu CSS style rules from %zu files", cssParser->ruleCount(), cssFiles.size());
 }
 
-bool Epub::initDrm() {
+bool Epub::initDrm(const size_t encXmlSize) {
   drmContext.reset();
 
   // Try loading the device key (no-op if already loaded; non-fatal if absent).
@@ -344,12 +350,7 @@ bool Epub::initDrm() {
     AdobeDrm::loadActivation();
   }
 
-  // ---- Check for encryption.xml ----
-  size_t encXmlSize = 0;
-  if (!getItemSize("META-INF/encryption.xml", &encXmlSize) || encXmlSize == 0) {
-    return false;  // Not DRM-protected — this is normal.
-  }
-
+  // encXmlSize already confirmed > 0 by load() — skip the second ZIP scan.
   if (!AdobeDrm::hasActivation()) {
     LOG_ERR("DRM", "DRM-protected book found but no device activation key at %s",
             AdobeDrm::ACTIVATION_KEY_PATH);
@@ -405,6 +406,7 @@ bool Epub::initDrm() {
 
 // load in the meta data for the epub file
 bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
+  drmLoadFailed = false;
   LOG_DBG("EBP", "Loading ePub: %s", filepath.c_str());
 
   // Initialize spine/TOC cache
@@ -418,8 +420,9 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   const bool isDrmProtected =
       getItemSize("META-INF/encryption.xml", &encXmlSize) && encXmlSize > 0;
   if (isDrmProtected) {
-    if (!initDrm() || !drmContext) {
+    if (!initDrm(encXmlSize) || !drmContext) {
       LOG_ERR("EBP", "Adobe DRM-protected book cannot be opened (no activation or key error)");
+      drmLoadFailed = true;
       return false;
     }
     LOG_INF("EBP", "Adobe ADEPT DRM ready");

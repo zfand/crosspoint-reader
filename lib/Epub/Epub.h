@@ -32,24 +32,30 @@ class Epub {
   std::vector<std::string> cssFiles;
   // Adobe ADEPT DRM context; nullptr when book is not DRM-protected.
   std::unique_ptr<AdobeDrm> drmContext;
+  // Set to true by load() when decryption fails (no key or wrong key).
+  bool drmLoadFailed = false;
 
   bool findContentOpfFile(std::string* contentOpfFile) const;
   bool parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata);
   bool parseTocNcxFile() const;
   bool parseTocNavFile() const;
   void parseCssFiles() const;
-  // Try to initialise Adobe ADEPT DRM for this EPUB. Returns false if not DRM-protected
-  // (non-fatal) or if DRM setup fails (fatal — caller should reject the book).
-  bool initDrm();
+  // Try to initialise Adobe ADEPT DRM for this EPUB.
+  // encXmlSize: pre-fetched size of META-INF/encryption.xml (avoids a second ZIP scan).
+  // Returns false if not DRM-protected (non-fatal) or if DRM setup fails (fatal).
+  bool initDrm(size_t encXmlSize);
 
  public:
-  explicit Epub(std::string filepath, const std::string& cacheDir) : filepath(std::move(filepath)) {
-    // create a cache key based on the filepath
-    cachePath = cacheDir + "/epub_" + std::to_string(std::hash<std::string>{}(this->filepath));
-  }
-  ~Epub() = default;
+  // Constructor and destructor defined in Epub.cpp so AdobeDrm is a complete type
+  // at the point where unique_ptr<AdobeDrm> is constructed/destroyed (avoids static_assert
+  // in unique_ptr's default deleter firing in TUs that only have a forward declaration).
+  explicit Epub(std::string filepath, const std::string& cacheDir);
+  ~Epub();
   std::string& getBasePath() { return contentBasePath; }
   bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
+  // True when the last load() call failed because the book is DRM-protected but
+  // no device activation key is present or the key failed decryption.
+  bool failedDueToDrm() const { return drmLoadFailed; }
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;

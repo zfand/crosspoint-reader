@@ -1606,6 +1606,14 @@ void CrossPointWebServer::handleDrmKeyUpload(DrmKeyUploadState& state) const {
       return;
     }
 
+    // Validate with mbedTLS before touching the SD card or freeing the old key.
+    if (!AdobeDrm::validateKeyBuffer(state.data.data(), state.data.size())) {
+      state.error = "Invalid key file — must be an unencrypted PKCS#8 DER private key. "
+                    "Convert with: openssl pkcs8 -topk8 -nocrypt -outform DER";
+      LOG_ERR("WEB", "[DRM] Key upload rejected: mbedTLS parse failed");
+      return;
+    }
+
     // Create /drm/ directory if it doesn't exist.
     if (!Storage.exists("/drm")) {
       if (!Storage.mkdir("/drm")) {
