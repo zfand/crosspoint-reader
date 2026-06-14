@@ -1,5 +1,6 @@
 #include "Epub.h"
 
+#include <AdobeDrm.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
 #include <JpegToBmpConverter.h>
@@ -9,6 +10,8 @@
 
 #include "Epub/parsers/ContainerParser.h"
 #include "Epub/parsers/ContentOpfParser.h"
+#include "Epub/parsers/EncryptionXmlParser.h"
+#include "Epub/parsers/RightsXmlParser.h"
 #include "Epub/parsers/TocNavParser.h"
 #include "Epub/parsers/TocNcxParser.h"
 
@@ -333,6 +336,73 @@ void Epub::parseCssFiles() const {
   LOG_DBG("EBP", "Loaded %zu CSS style rules from %zu files", cssParser->ruleCount(), cssFiles.size());
 }
 
+bool Epub::initDrm() {
+  drmContext.reset();
+
+  // Try loading the device key (no-op if already loaded; non-fatal if absent).
+  if (!AdobeDrm::hasActivation()) {
+    AdobeDrm::loadActivation();
+  }
+
+  // ---- Check for encryption.xml ----
+  size_t encXmlSize = 0;
+  if (!getItemSize("META-INF/encryption.xml", &encXmlSize) || encXmlSize == 0) {
+    return false;  // Not DRM-protected — this is normal.
+  }
+
+  if (!AdobeDrm::hasActivation()) {
+    LOG_ERR("DRM", "DRM-protected book found but no device activation key at %s",
+            AdobeDrm::ACTIVATION_KEY_PATH);
+    return false;
+  }
+
+  // ---- Parse encryption.xml ----
+  EncryptionXmlParser encParser(encXmlSize);
+  if (!encParser.setup()) return false;
+  if (!readItemContentsToStream("META-INF/encryption.xml", encParser, 512)) {
+    LOG_ERR("DRM", "Failed to parse META-INF/encryption.xml");
+    return false;
+  }
+  if (encParser.encryptedPaths.empty()) {
+    LOG_DBG("DRM", "encryption.xml found but lists no encrypted items");
+    return false;
+  }
+
+  // ---- Parse rights.xml ----
+  size_t rightsXmlSize = 0;
+  if (!getItemSize("META-INF/rights.xml", &rightsXmlSize) || rightsXmlSize == 0) {
+    LOG_ERR("DRM", "Missing META-INF/rights.xml in DRM-protected book");
+    return false;
+  }
+
+  RightsXmlParser rightsParser(rightsXmlSize);
+  if (!rightsParser.setup()) return false;
+  if (!readItemContentsToStream("META-INF/rights.xml", rightsParser, 512)) {
+    LOG_ERR("DRM", "Failed to parse META-INF/rights.xml");
+    return false;
+  }
+  if (rightsParser.encryptedKeyB64.empty()) {
+    LOG_ERR("DRM", "No encryptedKey element found in rights.xml");
+    return false;
+  }
+
+  // Normalise paths from encryption.xml to match ZipFile lookup paths.
+  for (auto& p : encParser.encryptedPaths) {
+    p = FsHelpers::normalisePath(p);
+  }
+
+  // ---- Initialise DRM: RSA-decrypt the AES content key ----
+  auto drm = std::unique_ptr<AdobeDrm>(new AdobeDrm());
+  if (!drm->init(std::move(encParser.encryptedPaths), rightsParser.encryptedKeyB64)) {
+    LOG_ERR("DRM", "DRM init failed — check device key and book rights");
+    return false;
+  }
+
+  drmContext = std::move(drm);
+  LOG_INF("DRM", "Adobe ADEPT DRM ready for book: %s", filepath.c_str());
+  return true;
+}
+
 // load in the meta data for the epub file
 bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   LOG_DBG("EBP", "Loading ePub: %s", filepath.c_str());
@@ -341,6 +411,19 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   bookMetadataCache.reset(new BookMetadataCache(cachePath));
   // Always create CssParser - needed for inline style parsing even without CSS files
   cssParser.reset(new CssParser(cachePath));
+
+  // Detect and initialise Adobe ADEPT DRM.
+  // If encryption.xml is present the book is DRM-protected and we must succeed.
+  size_t encXmlSize = 0;
+  const bool isDrmProtected =
+      getItemSize("META-INF/encryption.xml", &encXmlSize) && encXmlSize > 0;
+  if (isDrmProtected) {
+    if (!initDrm() || !drmContext) {
+      LOG_ERR("EBP", "Adobe DRM-protected book cannot be opened (no activation or key error)");
+      return false;
+    }
+    LOG_INF("EBP", "Adobe ADEPT DRM ready");
+  }
 
   // Try to load existing cache first
   if (bookMetadataCache->load()) {
@@ -712,30 +795,101 @@ bool Epub::generateThumbBmp(int height) const {
   return false;
 }
 
-uint8_t* Epub::readItemContentsToBytes(const std::string& itemHref, size_t* size, const bool trailingNullByte) const {
+uint8_t* Epub::readItemContentsToBytes(const std::string& itemHref, size_t* size,
+                                       const bool trailingNullByte) const {
   if (itemHref.empty()) {
     LOG_DBG("EBP", "Failed to read item, empty href");
     return nullptr;
   }
 
   const std::string path = FsHelpers::normalisePath(itemHref);
+
+  if (drmContext && drmContext->isItemEncrypted(path.c_str())) {
+    // Read the raw (encrypted) bytes — includes 16-byte IV prepended to ciphertext.
+    size_t rawSize = 0;
+    uint8_t* raw = ZipFile(filepath).readFileToMemory(path.c_str(), &rawSize, false);
+    if (!raw) {
+      LOG_ERR("EBP", "Failed to read encrypted item %s", path.c_str());
+      return nullptr;
+    }
+
+    const size_t plainLen = drmContext->decryptBuffer(raw, rawSize);
+    if (plainLen == 0) {
+      LOG_ERR("EBP", "DRM decryption failed for %s", path.c_str());
+      free(raw);
+      return nullptr;
+    }
+
+    if (trailingNullByte) {
+      // Reallocate with one extra byte for the null terminator.
+      auto* out = static_cast<uint8_t*>(malloc(plainLen + 1));
+      if (!out) {
+        LOG_ERR("EBP", "malloc failed for decrypted buffer");
+        free(raw);
+        return nullptr;
+      }
+      memcpy(out, raw, plainLen);
+      out[plainLen] = '\0';
+      free(raw);
+      if (size) *size = plainLen;
+      return out;
+    }
+
+    if (size) *size = plainLen;
+    return raw;
+  }
 
   const auto content = ZipFile(filepath).readFileToMemory(path.c_str(), size, trailingNullByte);
   if (!content) {
     LOG_DBG("EBP", "Failed to read item %s", path.c_str());
     return nullptr;
   }
-
   return content;
 }
 
-bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out, const size_t chunkSize) const {
+bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out,
+                                    const size_t chunkSize) const {
   if (itemHref.empty()) {
     LOG_DBG("EBP", "Failed to read item, empty href");
     return false;
   }
 
   const std::string path = FsHelpers::normalisePath(itemHref);
+
+  if (drmContext && drmContext->isItemEncrypted(path.c_str())) {
+    // Decrypt the full item to memory, then stream it to the caller.
+    // AES-CBC requires processing the full ciphertext to remove PKCS#7 padding correctly.
+    size_t rawSize = 0;
+    uint8_t* raw = ZipFile(filepath).readFileToMemory(path.c_str(), &rawSize, false);
+    if (!raw) {
+      LOG_ERR("EBP", "Failed to read encrypted item %s for streaming", path.c_str());
+      return false;
+    }
+
+    const size_t plainLen = drmContext->decryptBuffer(raw, rawSize);
+    if (plainLen == 0) {
+      LOG_ERR("EBP", "DRM decryption failed for %s", path.c_str());
+      free(raw);
+      return false;
+    }
+
+    // Stream decrypted plaintext in chunkSize blocks.
+    size_t offset = 0;
+    bool ok = true;
+    while (offset < plainLen) {
+      const size_t toWrite = (plainLen - offset < chunkSize) ? (plainLen - offset) : chunkSize;
+      if (out.write(raw + offset, toWrite) != toWrite) {
+        LOG_ERR("EBP", "Stream write failed at offset %zu", offset);
+        ok = false;
+        break;
+      }
+      offset += toWrite;
+    }
+
+    free(raw);
+    return ok;
+  }
+
   return ZipFile(filepath).readFileToStream(path.c_str(), out, chunkSize);
 }
 

@@ -10,6 +10,7 @@
 #include "Epub/BookMetadataCache.h"
 #include "Epub/css/CssParser.h"
 
+class AdobeDrm;
 class ZipFile;
 
 class Epub {
@@ -29,12 +30,17 @@ class Epub {
   std::unique_ptr<CssParser> cssParser;
   // CSS files
   std::vector<std::string> cssFiles;
+  // Adobe ADEPT DRM context; nullptr when book is not DRM-protected.
+  std::unique_ptr<AdobeDrm> drmContext;
 
   bool findContentOpfFile(std::string* contentOpfFile) const;
   bool parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata);
   bool parseTocNcxFile() const;
   bool parseTocNavFile() const;
   void parseCssFiles() const;
+  // Try to initialise Adobe ADEPT DRM for this EPUB. Returns false if not DRM-protected
+  // (non-fatal) or if DRM setup fails (fatal — caller should reject the book).
+  bool initDrm();
 
  public:
   explicit Epub(std::string filepath, const std::string& cacheDir) : filepath(std::move(filepath)) {
