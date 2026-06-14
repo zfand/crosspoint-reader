@@ -10,10 +10,13 @@
 
 #include <algorithm>
 
+#include <AdobeDrm.h>
+
 #include "CrossPointSettings.h"
 #include "OpdsServerStore.h"
 #include "SettingsList.h"
 #include "WebDAVHandler.h"
+#include "html/DrmSetupPageHtml.generated.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
@@ -165,6 +168,13 @@ void CrossPointWebServer::begin() {
   server->on("/api/opds", HTTP_GET, [this] { handleGetOpdsServers(); });
   server->on("/api/opds", HTTP_POST, [this] { handlePostOpdsServer(); });
   server->on("/api/opds/delete", HTTP_POST, [this] { handleDeleteOpdsServer(); });
+
+  // DRM setup endpoints
+  server->on("/drm", HTTP_GET, [this] { handleDrmSetupPage(); });
+  server->on("/api/drm/status", HTTP_GET, [this] { handleDrmKeyStatus(); });
+  server->on("/api/drm/key", HTTP_POST,
+             [this] { handleDrmKeyUploadPost(drmKeyUpload); },
+             [this] { handleDrmKeyUpload(drmKeyUpload); });
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
@@ -1550,5 +1560,93 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
 
     default:
       break;
+  }
+}
+
+// ---- DRM Setup Handlers ----
+
+void CrossPointWebServer::handleDrmSetupPage() const {
+  sendHtmlContent(server.get(), DrmSetupPageHtml, sizeof(DrmSetupPageHtml));
+  LOG_DBG("WEB", "Served DRM setup page");
+}
+
+void CrossPointWebServer::handleDrmKeyStatus() const {
+  const bool installed = Storage.exists(AdobeDrm::ACTIVATION_KEY_PATH);
+  String json = "{\"installed\":";
+  json += installed ? "true" : "false";
+  json += "}";
+  server->send(200, "application/json", json);
+}
+
+void CrossPointWebServer::handleDrmKeyUpload(DrmKeyUploadState& state) const {
+  esp_task_wdt_reset();
+  const HTTPUpload& upload = server->upload();
+
+  if (upload.status == UPLOAD_FILE_START) {
+    state.data.clear();
+    state.data.reserve(4096);
+    state.success = false;
+    state.error = "";
+    LOG_DBG("WEB", "[DRM] Key upload started: %s", upload.filename.c_str());
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    // Accumulate key bytes (key is always < 4KB; reject oversized data).
+    if (state.error.isEmpty()) {
+      if (state.data.size() + upload.currentSize > 4096) {
+        state.error = "File too large — expected a PKCS#8 DER key (<4KB)";
+        LOG_ERR("WEB", "[DRM] Key upload rejected: file exceeds 4096 bytes");
+      } else {
+        state.data.insert(state.data.end(), upload.buf,
+                          upload.buf + upload.currentSize);
+      }
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (!state.error.isEmpty()) return;
+    if (state.data.empty()) {
+      state.error = "Uploaded file is empty";
+      return;
+    }
+
+    // Create /drm/ directory if it doesn't exist.
+    if (!Storage.exists("/drm")) {
+      if (!Storage.mkdir("/drm")) {
+        state.error = "Failed to create /drm directory on SD card";
+        LOG_ERR("WEB", "[DRM] mkdir /drm failed");
+        return;
+      }
+    }
+
+    // Write key to fixed path.
+    FsFile keyFile;
+    if (!Storage.openFileForWrite("WEB", String(AdobeDrm::ACTIVATION_KEY_PATH), keyFile)) {
+      state.error = "Failed to open /drm/device.key for writing";
+      LOG_ERR("WEB", "[DRM] Failed to open key file for write");
+      return;
+    }
+    const size_t written = keyFile.write(state.data.data(), state.data.size());
+    keyFile.close();
+
+    if (written != state.data.size()) {
+      state.error = "Write incomplete — SD card may be full";
+      Storage.remove(AdobeDrm::ACTIVATION_KEY_PATH);
+      return;
+    }
+
+    // Force reload of the activation key on next book open.
+    AdobeDrm::freeActivation();
+
+    state.success = true;
+    LOG_INF("WEB", "[DRM] Device key written to %s (%zu bytes)",
+            AdobeDrm::ACTIVATION_KEY_PATH, state.data.size());
+    state.data.clear();  // Free memory immediately.
+    state.data.shrink_to_fit();
+  }
+}
+
+void CrossPointWebServer::handleDrmKeyUploadPost(DrmKeyUploadState& state) {
+  if (state.success) {
+    server->send(200, "text/plain", "OK");
+  } else {
+    const String msg = state.error.isEmpty() ? "Upload failed" : state.error;
+    server->send(400, "text/plain", msg);
   }
 }
