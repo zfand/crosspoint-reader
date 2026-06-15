@@ -141,6 +141,9 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["frontButtonLeft"] = s.frontButtonLeft;
   doc["frontButtonRight"] = s.frontButtonRight;
 
+  // int8_t field — not in SettingsList because SettingsList only supports uint8_t.
+  doc["calibreSyncServerIndex"] = s.calibreSyncServerIndex;
+
   String json;
   serializeJson(doc, json);
   return Storage.writeFile(path, json);
@@ -219,6 +222,8 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   s.frontButtonRight =
       clamp(doc["frontButtonRight"] | (uint8_t)S::FRONT_HW_RIGHT, S::FRONT_BUTTON_HARDWARE_COUNT, S::FRONT_HW_RIGHT);
   CrossPointSettings::validateFrontButtonMapping(s);
+
+  s.calibreSyncServerIndex = doc["calibreSyncServerIndex"] | (int8_t)-1;
 
   LOG_DBG("CPS", "Settings loaded from file");
 

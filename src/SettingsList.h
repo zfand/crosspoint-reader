@@ -111,6 +111,24 @@ inline const std::vector<SettingInfo>& getSettingsList() {
             KOREADER_STORE.saveToFile();
           },
           "koMatchMethod", StrId::STR_KOREADER_SYNC),
+      // --- Calibre Auto-Sync ---
+      // calibreAutoSync and calibreAutoSyncHour use STR_CAT_CALIBRE_SYNC so they
+      // are web-API-accessible. calibreSyncServerIndex is an int8_t handled
+      // directly in JsonSettingsIO (not via SettingsList). The device UI reaches
+      // these via CalibreAutoSyncSettingsActivity (SettingAction::CalibreAutoSync).
+      SettingInfo::Toggle(StrId::STR_CALIBRE_AUTO_SYNC, &CrossPointSettings::calibreAutoSync,
+                          "calibreAutoSync", StrId::STR_CAT_CALIBRE_SYNC),
+      SettingInfo::Value(StrId::STR_CALIBRE_AUTO_SYNC_HOUR, &CrossPointSettings::calibreAutoSyncHour,
+                         {0, 23, 1}, "calibreAutoSyncHour", StrId::STR_CAT_CALIBRE_SYNC),
+      SettingInfo::Value(StrId::STR_CALIBRE_FEED_MAX_SIZE, &CrossPointSettings::calibreFeedMaxSize,
+                         {1, 20, 1}, "calibreFeedMaxSize", StrId::STR_CAT_CALIBRE_SYNC),
+      SettingInfo::Enum(StrId::STR_CALIBRE_SYNC_TAG_FILTER, &CrossPointSettings::calibreSyncTagMode,
+                        {StrId::STR_ALL, StrId::STR_NEWS, StrId::STR_CUSTOM},
+                        "calibreSyncTagMode", StrId::STR_CAT_CALIBRE_SYNC),
+      SettingInfo::String(StrId::STR_CALIBRE_SYNC_CUSTOM_TAG, SETTINGS.calibreSyncCustomTag,
+                          sizeof(CrossPointSettings::calibreSyncCustomTag),
+                          "calibreSyncCustomTag", StrId::STR_CAT_CALIBRE_SYNC),
+
       // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
       SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
                           "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),

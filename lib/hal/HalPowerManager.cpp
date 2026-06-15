@@ -60,7 +60,7 @@ void HalPowerManager::setPowerSaving(bool enabled) {
   // Otherwise, no change needed
 }
 
-void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
+void HalPowerManager::startDeepSleep(HalGPIO& gpio, uint64_t timerWakeupUs) const {
   // Ensure that the power button has been released to avoid immediately turning back on if you're holding it
   while (gpio.isPressed(HalGPIO::BTN_POWER)) {
     delay(50);
@@ -76,11 +76,19 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   gpio_deep_sleep_hold_en();
   gpio_hold_en(GPIO_SPIWP);
   pinMode(InputManager::POWER_BUTTON_PIN, INPUT_PULLUP);
-  // Arm the wakeup trigger *after* the button is released
+  // Arm the wakeup trigger *after* the button is released.
   // Note: this is only useful for waking up on USB power. On battery, the MCU will be completely powered off, so the
   // power button is hard-wired to briefly provide power to the MCU, waking it up regardless of the wakeup source
-  // configuration
+  // configuration.
   esp_deep_sleep_enable_gpio_wakeup(1ULL << InputManager::POWER_BUTTON_PIN, ESP_GPIO_WAKEUP_GPIO_LOW);
+
+  // Arm a timer wakeup for scheduled tasks (e.g. Calibre auto-sync) when USB is connected.
+  // On battery the MCU is fully powered off by the latch MOSFET, so the timer cannot fire.
+  if (timerWakeupUs > 0 && gpio.isUsbConnected()) {
+    esp_sleep_enable_timer_wakeup(timerWakeupUs);
+    LOG_DBG("PWR", "Timer wakeup armed: %llu us", timerWakeupUs);
+  }
+
   // Enter Deep Sleep
   esp_deep_sleep_start();
 }

@@ -29,8 +29,10 @@
 #define BQ27220_VOLT_REG 0x08  // Voltage() command code (mV)
 
 // Analog DS3231 RTC I2C
-#define I2C_ADDR_DS3231 0x68  // RTC I2C address
-#define DS3231_SEC_REG 0x00   // Seconds command code (BCD)
+#define I2C_ADDR_DS3231 0x68   // RTC I2C address
+#define DS3231_SEC_REG 0x00    // Seconds register (BCD)
+#define DS3231_MIN_REG 0x01    // Minutes register (BCD)
+#define DS3231_HOUR_REG 0x02   // Hours register (BCD, bit6=0 → 24h mode)
 
 // QST QMI8658 IMU I2C
 #define I2C_ADDR_QMI8658 0x6B        // IMU I2C address
@@ -85,7 +87,18 @@ class HalGPIO {
   // Returns true once per edge (plug or unplug) since the last update()
   bool wasUsbStateChanged() const;
 
-  enum class WakeupReason { PowerButton, AfterFlash, AfterUSBPower, Other };
+  enum class WakeupReason { PowerButton, AfterFlash, AfterUSBPower, ScheduledSync, Other };
+
+  // Current time from the DS3231 RTC. Only valid on X3 hardware.
+  struct Ds3231Time {
+    uint8_t hour;    // 0–23
+    uint8_t minute;  // 0–59
+    bool valid;
+  };
+
+  // Read hour and minute from the DS3231. Returns valid=false on X4 or I2C failure.
+  // Initialises and tears down the Wire bus internally; safe to call at any point.
+  Ds3231Time getDS3231Time() const;
 
   WakeupReason getWakeupReason() const;
 

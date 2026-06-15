@@ -49,4 +49,10 @@ std::string buildUrl(const std::string& serverUrl, const std::string& path) {
   return base + "/" + path;
 }
 
+std::string filenameFromUrl(const std::string& url) {
+  const size_t slash = url.rfind('/');
+  if (slash == std::string::npos || slash + 1 >= url.size()) return url;
+  return url.substr(slash + 1);
+}
+
 }  // namespace UrlUtils

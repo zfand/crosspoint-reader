@@ -291,6 +291,15 @@ int CrossPointSettings::getRefreshFrequency() const {
   }
 }
 
+uint64_t CrossPointSettings::getCalibreSyncIntervalUs(uint8_t currentHour, uint8_t currentMinute) const {
+  if (!calibreAutoSync) return 0;
+  const int currentMinuteOfDay = static_cast<int>(currentHour) * 60 + static_cast<int>(currentMinute);
+  const int targetMinuteOfDay = static_cast<int>(calibreAutoSyncHour) * 60;
+  int minutesUntil = (targetMinuteOfDay - currentMinuteOfDay + 24 * 60) % (24 * 60);
+  if (minutesUntil == 0) minutesUntil = 24 * 60;
+  return static_cast<uint64_t>(minutesUntil) * 60ULL * 1000000ULL;
+}
+
 int CrossPointSettings::getReaderFontId() const {
   switch (fontFamily) {
     case NOTOSERIF:

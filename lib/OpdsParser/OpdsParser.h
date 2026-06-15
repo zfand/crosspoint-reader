@@ -19,9 +19,11 @@ enum class OpdsEntryType {
 struct OpdsEntry {
   OpdsEntryType type = OpdsEntryType::NAVIGATION;
   std::string title;
-  std::string author;  // Only for books
-  std::string href;    // Navigation URL or epub download URL
+  std::string author;    // Only for books
+  std::string href;      // Navigation URL or epub download URL
   std::string id;
+  std::string published; // ISO 8601 from <dc:date> or <published> — empty if absent
+  std::string tags;      // comma-separated <category term> values, e.g. "News,Fiction"
 };
 
 // Legacy alias for backward compatibility
@@ -52,6 +54,7 @@ class OpdsParser final : public Print {
   const std::string& getSearchTemplate() const { return searchTemplate; }
   const std::string& getNextPageUrl() const { return nextPageUrl; }
   const std::string& getPrevPageUrl() const { return prevPageUrl; }
+  const std::string& getFeedUpdated() const { return feedUpdated; }
   OpdsParser(const OpdsParser&) = delete;
   OpdsParser& operator=(const OpdsParser&) = delete;
 
@@ -91,6 +94,7 @@ class OpdsParser final : public Print {
   std::string searchTemplate;
   std::string nextPageUrl;
   std::string prevPageUrl;
+  std::string feedUpdated;
   // Helper to find attribute value
   static const char* findAttribute(const XML_Char** atts, const char* name);
 
@@ -105,6 +109,8 @@ class OpdsParser final : public Print {
   bool inAuthor = false;
   bool inAuthorName = false;
   bool inId = false;
+  bool inUpdated = false;
+  bool inPublished = false;
 
   bool errorOccured = false;
 };
