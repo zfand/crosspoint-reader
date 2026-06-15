@@ -1,0 +1,65 @@
+name: Alpha DRM Release (one-shot)
+on:
+  push:
+    branches:
+      - claude/libby-adobe-drm-support-05ejnp
+
+jobs:
+  build-alpha:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install PlatformIO Core
+        run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+
+      - name: Build CrossPoint
+        run: pio run -e gh_release
+
+      - name: Create Alpha Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-alpha-drm
+          name: v0.1.0-alpha-drm — Adobe ADEPT DRM support
+          prerelease: true
+          body: |
+            ## Alpha release: Adobe ADEPT DRM support (Libby/OverDrive)
+
+            This alpha adds on-device Adobe ADEPT DRM decryption for Libby/OverDrive EPUBs.
+
+            ### Setup
+            1. Export your device RSA private key from your Adobe activation (libgourou or de-acsm) as **PKCS#8 DER** format
+            2. Place it at `/drm/device.key` on your SD card root
+            3. Open any Libby EPUB normally — decryption is transparent
+
+            Alternatively, use the web UI (device IP in browser) to upload the key file.
+
+            ### Flashing
+            ```bash
+            esptool.py --chip esp32c3 write_flash 0x0 firmware.bin
+            ```
+            You will also need `bootloader.bin` (flash at `0x0` offset via full flash) and `partitions.bin`.
+            Use the ESP32 flash tool or esptool merge-bin for a single combined image.
+
+            ### Files
+            - `firmware.bin` — main application
+            - `bootloader.bin` — bootloader
+            - `partitions.bin` — partition table
+          files: |
+            .pio/build/gh_release/bootloader.bin
+            .pio/build/gh_release/firmware.bin
+            .pio/build/gh_release/partitions.bin

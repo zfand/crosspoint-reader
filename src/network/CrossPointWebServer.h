@@ -112,4 +112,19 @@ class CrossPointWebServer {
   void handleGetOpdsServers() const;
   void handlePostOpdsServer();
   void handleDeleteOpdsServer();
+
+  // DRM key upload state — accumulates raw key bytes during multipart upload.
+  // Intentionally separate from the general upload state: key is always tiny (<4KB)
+  // so we hold the whole payload in memory and validate before writing.
+  struct DrmKeyUploadState {
+    std::vector<uint8_t> data;
+    bool success = false;
+    String error;
+  } drmKeyUpload;
+
+  // DRM setup handlers
+  void handleDrmSetupPage() const;
+  void handleDrmKeyStatus() const;
+  void handleDrmKeyUpload(DrmKeyUploadState& state) const;
+  void handleDrmKeyUploadPost(DrmKeyUploadState& state);
 };
