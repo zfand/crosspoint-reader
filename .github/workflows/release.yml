@@ -3,6 +3,12 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.1.0-alpha-drm)'
+        required: true
+        default: 'v0.1.0-alpha-drm'
 
 jobs:
   build-release:
@@ -42,7 +48,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          prerelease: ${{ contains(github.event.inputs.tag_name || github.ref_name, 'alpha') || contains(github.event.inputs.tag_name || github.ref_name, 'beta') || contains(github.event.inputs.tag_name || github.ref_name, 'rc') }}
           files: |
             .pio/build/gh_release/bootloader.bin
             .pio/build/gh_release/firmware.bin
